@@ -25,11 +25,14 @@ if (!require("fs")) {install.packages("fs"); library("fs")}
 if (!require("bmp")) {install.packages("bmp"); library("bmp")}
 if (!require("matrixStats")) {install.packages("matrixStats"); library("matrixStats")}
 if (!require("caret")) {install.packages("caret"); library("caret")}
+if (!require("randomForest")) {install.packages("randomForest"); library("randomForest")}
+if (!require("e1071")) {install.packages("e1071"); library("e1071")}
+if (!require("Rborist")) {install.packages("Rborist"); library("Rborist")}
 
 
 # Verify and create files folder
 
-if (!dir_exists("files")) dir_create("files")
+# if (!dir_exists("files")) dir_create("files")
 
 # Download file ------------------------------------------------------------------------------------------------------
 # still not happy.....
@@ -162,7 +165,12 @@ rm(random.images, PC, random.images.reduced, random.images.simplified, random.im
 
 # Train algorithm ------------------------------------------------------------------------------------------------------
 
-random.images.index <- sample_n(image.index, 100)
+random.images.index <- 
+  image.index %>% 
+  filter(!is.na(filename)) %>% 
+  group_by(diagnosis) %>% 
+  sample_n(200) %>% 
+  ungroup()
 
 random.images <-
   random.images.index %>% 
@@ -174,20 +182,59 @@ random.images <-
         matrix(nrow = 1, byrow = FALSE)})}) %>% 
   plyr::rbind.fill.matrix()
 
-random.images.simplified <- random.images[,matrixStats::colSds(random.images) > 10]
+# remove columns with near zero variance
+nzv <- nearZeroVar(random.images)
+random.images.simplified <- random.images[,-nzv]
 
-forest <- train(x = random.images.simplified,
-                y = random.images.index$diagnosis,
-                method = "rf")
-
-
-
-
-
+# transform predictors via PCA
+PC <- prcomp(random.images.simplified)
+# random.images.simplified <- prcomp(random.images.simplified) %>% magrittr::extract("x")
+random.images.simplified <- PC$x
 
 
+forest1 <- 
+  train(x = random.images.simplified,
+        y = random.images.index$diagnosis,
+        method = "rf",
+        trControl = trainControl(method = 'repeatedcv', number = 10, 
+                                 repeats = 10, verboseIter = TRUE),
+        tuneGrid = data.frame(mtry = c(1,3,5,10,20,50,100,150,200)))
+
+forest2 <- 
+  train(x = random.images.simplified[,1:50],
+        y = random.images.index$diagnosis,
+        method = "rf",
+        trControl = trainControl(method = 'repeatedcv', number = 10, 
+                                 repeats = 10, verboseIter = TRUE),
+        tuneGrid = data.frame(mtry = c(1,3,5,10,20,30,40,50)))
+
+forest3 <- 
+  train(x = random.images.simplified[,1:10],
+        y = random.images.index$diagnosis,
+        method = "rf",
+        trControl = trainControl(method = 'repeatedcv', number = 10, 
+                                 repeats = 10, verboseIter = TRUE),
+        tuneGrid = data.frame(mtry = 1:10))
+
+forest4 <- 
+  train(x = random.images.simplified,
+        y = random.images.index$diagnosis,
+        method = "Rborist",
+        trControl = trainControl(method = 'cv', number = 10, verboseIter = TRUE),
+        tuneGrid = data.frame(predFixed = c(1,3,5,10,20,50,100,150,200),
+                              minNode = rep(2,9)))
 
 
+varImpPlot(forest1$finalModel)
+varImpPlot(forest2$finalModel)
+varImpPlot(forest3$finalModel)
+
+
+# plot de varImpPlot mostram que os PC não tem importância crescente, são bem fora de ordem
+# pouca vantagem em fazer repeatedcv, a performance não varia tanto com o tuning
+# tanto rf quanto Rborist tem parâmetros para o número de árvores, padrão 500, mas fora do tuning grid; verificar se dá pra passar isso como arg em train()
+# avaliar como são constituídos os PCs, criar imagem com o quanto cada pixel tem de peso em cada PC
+# criar PCs separados para cada canal do BMP, tratar cada canal separadamente
 
 
 
