@@ -20,6 +20,11 @@
 
 # Install and load libraries -----------------------------------------------------------------------------------------
 
+# make sure these packages are installed (but do not load)
+if (!("magrittr" %in% installed.packages())) {install.packages("magrittr")}
+if (!("plyr" %in% installed.packages())) {install.packages("plyr")}
+
+# load these packages (installed if not previously done)
 if (!require("tidyverse")) {install.packages("tidyverse"); library("tidyverse")}
 if (!require("fs")) {install.packages("fs"); library("fs")}
 if (!require("bmp")) {install.packages("bmp"); library("bmp")}
@@ -29,8 +34,6 @@ if (!require("randomForest")) {install.packages("randomForest"); library("random
 if (!require("e1071")) {install.packages("e1071"); library("e1071")}
 if (!require("Rborist")) {install.packages("Rborist"); library("Rborist")}
 if (!require("Matrix")) {install.packages("Matrix"); library("Matrix")}
-if (!require("magrittr")) {install.packages("magrittr"); library("magrittr")}
-
 
 # Verify and create files folder
 
@@ -329,7 +332,7 @@ fig.summation <- sapply(1:400, function(i){
 }) 
 
 
-# Identify NZV columns from reduced set --------------------------------------------------------------------------------
+# Identify NZV columns on reduced set ----------------------------------------------------------------------------------
 
 # housekeeping and parameters
 gc()
@@ -376,11 +379,12 @@ random.images.index <-
   group_by(diagnosis) %>% 
   sample_n(numImagesPCA / 2) %>% 
   ungroup() %>% 
-  mutate(partition = rep(1:numPartitionsPCA, numImagesPCA/numPartitionsPCA))
+  mutate(partition = rep(x = 1:numPartitionsPCA, times = numImagesPCA/numPartitionsPCA))
 
 # load images and remove NZV columns, one partition at a time
 random.images <- 
   sapply(1:numPartitionsPCA,
+         simplify = FALSE, 
          function(currentPartition){
            # filter only observations in current partition
            random.images.index %>% 
@@ -391,13 +395,12 @@ random.images <-
                  path("files","C-NMC_Leukemia","training_data",paste("fold_",df$fold[N],sep=""),
                       df$diagnosis[N],df$filename[N]) %>% 
                    bmp::read.bmp() %>% 
-                   as.integer() %>% 
+                   as.integer() %>%
                    matrix(nrow = 1, byrow = FALSE)})}) %>% 
-             # combination of all images into single matrix
+             # # combination of all images into single matrix
              plyr::rbind.fill.matrix() %>% 
-             # remove columns with NZV
-             magrittr::extract(,-nzvVector) %>% 
-             as.matrix()
+             # # remove columns with NZV
+             magrittr::extract(,-nzvVector)
          }) %>% 
   # combine results into single matrix
   plyr::rbind.fill.matrix()
@@ -406,7 +409,7 @@ random.images <-
 pca <- prcomp(random.images)
 
 # remove temporary variables
-rm(random.images.index, random.images, numImagesPCA,numPartitionsPCA)
+rm(random.images.index, random.images, numImagesPCA, numPartitionsPCA)
 
 
 # Apply random forest to the entire training set through PCA -----------------------------------------------------------
@@ -423,7 +426,7 @@ image.index <-
 
 # read files from each partition
 images.all.pc <-
-  sapply(1:numPartitions, 
+  sapply(1:numPartitions, simplify = FALSE,
          function(currentPartition){
            
            # filter only observations in current partition
@@ -440,8 +443,7 @@ images.all.pc <-
              # combination of all images into single matrix
              plyr::rbind.fill.matrix() %>% 
              # remove columns with NZV
-             magrittr::multiply_by_matrix(nzvMatrix) %>% 
-             as.matrix() %>% 
+             magrittr::extract(,-nzvVector) %>% 
              # convert predictors to principal components
              magrittr::multiply_by_matrix(pca$rotation)
            
